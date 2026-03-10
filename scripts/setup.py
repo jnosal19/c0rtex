@@ -86,6 +86,12 @@ def setup_wizard():
         patched = patch_model_lines(scripts_dir, chosen_model)
         if patched:
             print(f"  > patched model in: {', '.join(patched)}")
+        create_modelfile(cortex_dir, chosen_model)
+    else:
+        # write a placeholder Modelfile the user can edit later
+        placeholder = cortex_dir / "Modelfile"
+        placeholder.write_text("# set your base model here, then run: ollama create c0rtex -f this-file\nFROM qwen2.5:3b\n")
+        print(f"  > wrote placeholder {placeholder} — edit the FROM line before creating")
 
     # ── generate SOUL.md ──────────────────────────────────────
     print("--- generating personality file ---")
@@ -118,9 +124,12 @@ def setup_wizard():
     print("\nnext steps:")
     print("  1. make sure ollama is running: ollama serve")
     if chosen_model:
-        print(f"  2. create a modelfile: ollama create c0rtex -f Modelfile  (uses {chosen_model} as base)")
+        print(f"  2. if you skipped model creation: ollama create c0rtex -f {cortex_dir / 'Modelfile'}")
     else:
-        print("  2. pull a model and create a modelfile: ollama pull <model> && ollama create c0rtex -f Modelfile")
+        print("  2. pull a model and create the c0rtex model:")
+        print("     ollama pull <model>")
+        print(f"     edit {cortex_dir / 'Modelfile'} to set FROM <model>")
+        print(f"     ollama create c0rtex -f {cortex_dir / 'Modelfile'}")
     if matrix_setup:
         print("  3. start matrix bridge: python ~/.c0rtex/scripts/c0rtex_matrix.py")
     else:
@@ -436,6 +445,32 @@ def offer_model_pull(model):
     except subprocess.TimeoutExpired:
         print(f"  > pull timed out. run manually: ollama pull {model}")
         return False
+
+
+def create_modelfile(cortex_dir, model):
+    """generate ~/.c0rtex/Modelfile and offer to create the c0rtex ollama model."""
+    modelfile_path = cortex_dir / "Modelfile"
+    modelfile_path.write_text(f"FROM {model}\n")
+    print(f"  > wrote {modelfile_path}")
+
+    create = input("  create 'c0rtex' ollama model now? (y/n): ").strip().lower()
+    if create != "y":
+        print(f"  > skipped. run later: ollama create c0rtex -f {modelfile_path}")
+        return
+
+    try:
+        result = subprocess.run(
+            ["ollama", "create", "c0rtex", "-f", str(modelfile_path)],
+            timeout=120
+        )
+        if result.returncode == 0:
+            print("  > 'c0rtex' model created successfully")
+        else:
+            print(f"  > creation failed. run manually: ollama create c0rtex -f {modelfile_path}")
+    except FileNotFoundError:
+        print(f"  > ollama not found. run later: ollama create c0rtex -f {modelfile_path}")
+    except subprocess.TimeoutExpired:
+        print(f"  > timed out. run manually: ollama create c0rtex -f {modelfile_path}")
 
 
 def patch_model_lines(scripts_dir, model):
